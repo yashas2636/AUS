@@ -27,7 +27,7 @@ public class AusPost {
          for (String date : dates) {
             date = date.trim(); // Trim leading and trailing whitespace
 
-            // Checking the length of the string
+            //  this will do same as d{2}d{2}d{4} regular expression pattern matching 
             if (date.length() == 10 &&
                 date.charAt(2) == ' ' &&
                 date.charAt(5) == ' ' &&
@@ -51,7 +51,7 @@ public class AusPost {
          // Sort the valid dates
          Collections.sort(validDates);
 
-         // Display valid dates and differences
+         // iterate sorted list Display valid dates and differences from 2nd position
          for (int i = 0; i < validDates.size(); i++) {
             System.out.println("Date " + (i + 1) + ": " + validDates.get(i).format(formatter));
             if (i > 0) {
@@ -71,7 +71,7 @@ public class AusPost {
       }
    }
 
-   // Helper method to check if a string contains only digits
+   //check if the entered string is digit
    public static boolean isDigit(String str) {
       for (int i = 0; i < str.length(); i++) {
          if (!Character.isDigit(str.charAt(i))) {
