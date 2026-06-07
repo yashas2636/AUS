@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * if not handled. Every test here asserts "no 5xx, no crash, structured response".
  */
 @WebMvcTest(FibonacciController.class)
-@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class})
+@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class, FibonacciMetrics.class})
 @TestPropertySource(properties = "rate.limit.requests-per-minute=100000")
 class FibonacciResilienceTest {
 

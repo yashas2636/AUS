@@ -12,7 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(FibonacciController.class)
-@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class})
+@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class, FibonacciMetrics.class})
 @TestPropertySource(properties = "rate.limit.requests-per-minute=100000")
 class FibonacciControllerTest {
 
