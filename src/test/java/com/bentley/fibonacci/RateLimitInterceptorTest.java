@@ -3,7 +3,6 @@ package com.bentley.fibonacci;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -16,20 +15,20 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(FibonacciController.class)
-@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class})
+@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class, FibonacciMetrics.class, TestMetricsConfig.class})
 @TestPropertySource(properties = "rate.limit.requests-per-minute=5")
 class RateLimitInterceptorTest {
-
-    @MockBean
-    FibonacciMetrics fibonacciMetrics;
 
     @Autowired
     private MockMvc mockMvc;
 
+    // Each test uses a distinct X-Forwarded-For IP so rate limit windows don't bleed across tests.
+
     @Test
     void withinLimit_allRequestsSucceed() throws Exception {
         for (int i = 0; i < 5; i++) {
-            mockMvc.perform(get("/api/v1/fibonacci").param("n", "1"))
+            mockMvc.perform(get("/api/v1/fibonacci").param("n", "1")
+                           .header("X-Forwarded-For", "10.0.1.1"))
                    .andExpect(status().isOk());
         }
     }
@@ -38,7 +37,8 @@ class RateLimitInterceptorTest {
     void exceedLimit_returns429() throws Exception {
         AtomicInteger rateLimited = new AtomicInteger(0);
         for (int i = 0; i < 10; i++) {
-            MvcResult result = mockMvc.perform(get("/api/v1/fibonacci").param("n", "1"))
+            MvcResult result = mockMvc.perform(get("/api/v1/fibonacci").param("n", "1")
+                                              .header("X-Forwarded-For", "10.0.2.1"))
                                       .andReturn();
             if (result.getResponse().getStatus() == 429) {
                 rateLimited.incrementAndGet();
@@ -49,11 +49,12 @@ class RateLimitInterceptorTest {
 
     @Test
     void rateLimitResponse_hasErrorBody() throws Exception {
-        // Exhaust the limit
         for (int i = 0; i < 5; i++) {
-            mockMvc.perform(get("/api/v1/fibonacci").param("n", "1"));
+            mockMvc.perform(get("/api/v1/fibonacci").param("n", "1")
+                           .header("X-Forwarded-For", "10.0.3.1"));
         }
-        mockMvc.perform(get("/api/v1/fibonacci").param("n", "1"))
+        mockMvc.perform(get("/api/v1/fibonacci").param("n", "1")
+                       .header("X-Forwarded-For", "10.0.3.1"))
                .andExpect(status().isTooManyRequests());
     }
 }

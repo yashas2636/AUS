@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,12 +27,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
  */
 @Tag("load")
 @WebMvcTest(FibonacciController.class)
-@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class})
+@Import({FibonacciService.class, CacheConfig.class, RateLimitInterceptor.class, WebConfig.class, FibonacciMetrics.class, TestMetricsConfig.class})
 @TestPropertySource(properties = "rate.limit.requests-per-minute=100000")
 class FibonacciLoadTest {
-
-    @MockBean
-    FibonacciMetrics fibonacciMetrics;
 
     private static final int TOTAL_REQUESTS = 1000;
     private static final int THREAD_COUNT = 50;
