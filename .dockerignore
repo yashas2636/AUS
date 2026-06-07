@@ -1,0 +1,11 @@
+target/
+.git/
+.github/
+gitops/
+monitoring/
+scripts/
+*.md
+*.iml
+.idea/
+.DS_Store
+src/test/

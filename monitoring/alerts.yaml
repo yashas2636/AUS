@@ -1,0 +1,133 @@
+# New Relic alert conditions for fibonacci-service
+# Apply via Terraform (newrelic_nrql_alert_condition) or NR NerdGraph API.
+# All conditions target the 'fibonacci-service' NR APM application.
+# Policy: fibonacci-service-alerts
+
+policy: fibonacci-service-alerts
+notification_channel: teams-sre
+
+conditions:
+
+  # ── Availability / error rate ─────────────────────────────────────────────
+
+  - name: "fibonacci-service: High 5xx Error Rate"
+    type: NRQL
+    description: >
+      More than 1% of requests are returning 5xx. This indicates an unhandled
+      exception reaching clients. The GlobalExceptionHandler should prevent this —
+      if this fires, something unexpected bypassed it (OOM, JVM crash, etc.).
+    nrql: |
+      SELECT percentage(count(*), WHERE httpResponseCode >= 500)
+      FROM Transaction
+      WHERE appName = 'fibonacci-service'
+    evaluation_offset: 3
+    critical:
+      threshold: 1          # > 1% error rate
+      threshold_duration: 300   # for 5 consecutive minutes
+      operator: above
+    warning:
+      threshold: 0.5        # > 0.5% warning
+      threshold_duration: 300
+      operator: above
+
+  # ── Latency ───────────────────────────────────────────────────────────────
+
+  - name: "fibonacci-service: High P99 Latency"
+    type: NRQL
+    description: >
+      P99 response time exceeds 2 seconds. Possible causes: large n values being
+      computed without cache hit, CPU throttling (check HPA), GC pressure.
+    nrql: |
+      SELECT percentile(duration, 99)
+      FROM Transaction
+      WHERE appName = 'fibonacci-service'
+      AND httpResponseCode < 500
+    evaluation_offset: 3
+    critical:
+      threshold: 2.0        # > 2s P99
+      threshold_duration: 300
+      operator: above
+    warning:
+      threshold: 1.0        # > 1s P99
+      threshold_duration: 300
+      operator: above
+
+  # ── Throughput drop (service may be down) ────────────────────────────────
+
+  - name: "fibonacci-service: Throughput Drop"
+    type: NRQL
+    description: >
+      Request rate has dropped more than 80% compared to the same time last week.
+      This can indicate the service is down, the ingress is misconfigured,
+      or Kong is not routing traffic. Low-traffic windows may cause false positives —
+      tune the threshold if this alerts outside business hours.
+    nrql: |
+      SELECT rate(count(*), 1 minute)
+      FROM Transaction
+      WHERE appName = 'fibonacci-service'
+    critical:
+      threshold: 0          # zero throughput for 5 min = definitely down
+      threshold_duration: 300
+      operator: equals
+    warning:
+      threshold: 1          # < 1 req/min for 5 min = very suspicious
+      threshold_duration: 300
+      operator: below
+
+  # ── Rate limiting abuse ───────────────────────────────────────────────────
+
+  - name: "fibonacci-service: High Rate Limit Hit Rate"
+    type: NRQL
+    description: >
+      More than 10% of requests are being rate-limited. Either a single client
+      is abusing the API, or a legitimate client is misconfigured and retrying
+      too aggressively. Check X-Forwarded-For in logs to identify the source IP.
+    nrql: |
+      SELECT rate(getField(metric, 'fibonacci.rate_limited.total'), 1 minute) /
+             rate(getField(metric, 'fibonacci.requests.total'), 1 minute) * 100
+      FROM Metric
+      WHERE appName = 'fibonacci-service'
+    critical:
+      threshold: 20         # > 20% of requests rate-limited
+      threshold_duration: 300
+      operator: above
+    warning:
+      threshold: 10
+      threshold_duration: 300
+      operator: above
+
+  # ── Large n value spike (computation pressure) ────────────────────────────
+
+  - name: "fibonacci-service: High Average n Value"
+    type: NRQL
+    description: >
+      Average requested n value has exceeded 80,000 over the last 5 minutes.
+      F(80000) requires significant CPU and memory. This may indicate a scraper
+      or a client iterating through large values. Consider adding per-value rate
+      limiting or a lower n cap if sustained.
+    nrql: |
+      SELECT average(getField(metric, 'fibonacci.n.value'))
+      FROM Metric
+      WHERE appName = 'fibonacci-service'
+    warning:
+      threshold: 80000
+      threshold_duration: 300
+      operator: above
+
+  # ── Pod health ────────────────────────────────────────────────────────────
+
+  - name: "fibonacci-service: Container Restart Loop"
+    type: NRQL
+    description: >
+      Container has restarted more than 3 times in 10 minutes. Likely causes:
+      OOMKill (check memory limits and -XX:MaxRAMPercentage), liveness probe
+      timeout (check startup time vs startupProbe failureThreshold), or
+      application crash on startup (check NR logs for ERROR at boot).
+    nrql: |
+      SELECT sum(`k8s.container.restartCount`)
+      FROM K8sContainerSample
+      WHERE containerName = 'fibonacci-service'
+    critical:
+      threshold: 3
+      threshold_duration: 600   # 3 restarts in 10 minutes
+      operator: above

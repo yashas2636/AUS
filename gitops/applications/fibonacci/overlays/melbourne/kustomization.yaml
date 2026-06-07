@@ -1,0 +1,60 @@
+---
+# Melbourne data centre — ArgoCD cluster label: env=prod-mel
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fibonacci
+
+replicas:
+  - name: deploy
+    count: 3
+
+labels:
+  - pairs:
+      environment: prod-mel
+      datacentre: melbourne
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: Deployment
+      name: deploy
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "2"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "1"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 1Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 1Gi
+  - target:
+      kind: Ingress
+      name: ingress
+    patch: |-
+      - op: add
+        path: /spec/rules/0/host
+        value: fibonacci.connectivegroup.com.au
+
+# Immutable digest tag — updated by CI via scripts/update-image-tag.sh after every release
+images:
+  - name: registry.gitlab.com/connective-au/devops/application-images/fibonacci-service
+    newTag: v1.0.0@sha256:replace-with-actual-digest
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    team: engineer
+    app.kubernetes.io/name: fibonacci-service
+    app.kubernetes.io/instance: fibonacci
+
+configMapGenerator:
+  - name: fibonacci-service-config
+    envs:
+      - config.env

@@ -1,0 +1,80 @@
+---
+# Local development overlay — use with minikube / kind / Docker Desktop Kubernetes.
+# Not registered in ArgoCD. Apply manually:
+#   kubectl apply -k gitops/applications/fibonacci/overlays/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fibonacci
+
+replicas:
+  - name: deploy
+    count: 1
+
+labels:
+  - pairs:
+      environment: local
+
+resources:
+  - ../../base
+
+patches:
+  # No ExternalSecret in local — override the secret with a stub so the pod starts
+  - target:
+      kind: ExternalSecret
+      name: fibonacci-secret
+    patch: |-
+      $patch: delete
+      apiVersion: external-secrets.io/v1
+      kind: ExternalSecret
+      metadata:
+        name: fibonacci-secret
+
+  # Reduced resources for local laptop
+  - target:
+      kind: Deployment
+      name: deploy
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "500m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "100m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 256Mi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 256Mi
+
+  - target:
+      kind: Ingress
+      name: ingress
+    patch: |-
+      - op: add
+        path: /spec/rules/0/host
+        value: fibonacci.local
+
+images:
+  - name: registry.gitlab.com/connective-au/devops/application-images/fibonacci-service
+    newTag: main-latest
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    team: engineer
+    app.kubernetes.io/name: fibonacci-service
+    app.kubernetes.io/instance: fibonacci
+
+configMapGenerator:
+  - name: fibonacci-service-config
+    envs:
+      - config.env
+
+  # Stub secret — replaces ExternalSecret for local use only
+  - name: fibonacci-secret
+    literals:
+      - NEW_RELIC_LICENSE_KEY=local-dev-no-nr
+    options:
+      disableNameSuffixHash: true

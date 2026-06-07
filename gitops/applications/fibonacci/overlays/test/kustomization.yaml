@@ -1,0 +1,43 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fibonacci
+
+replicas:
+  - name: deploy
+    count: 2
+
+labels:
+  - pairs:
+      environment: test
+
+resources:
+  - ../../base
+
+# Patch ingress to add the test hostname
+patches:
+  - target:
+      kind: Ingress
+      name: ingress
+    patch: |-
+      - op: add
+        path: /spec/rules/0/host
+        value: fibonacci-test.connectivegroup.com.au
+
+images:
+  - name: registry.gitlab.com/connective-au/devops/application-images/fibonacci-service
+    newTag: main-latest
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    team: engineer
+    app: fibonacci-service-config
+    app.kubernetes.io/name: fibonacci-service
+    app.kubernetes.io/instance: fibonacci
+
+configMapGenerator:
+  - name: fibonacci-service-config
+    envs:
+      - config.env

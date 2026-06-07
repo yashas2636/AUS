@@ -1,0 +1,30 @@
+---
+# Kong is the platform-level API gateway (deployed as its own ApplicationSet at sync-wave -70).
+# This Ingress simply registers the service route with Kong via ingressClassName: kong.
+# Host is patched per-environment in overlays/{env}/kustomization.yaml.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress
+  labels:
+    app.kubernetes.io/name: fibonacci-service
+    app.kubernetes.io/instance: fibonacci
+  annotations:
+    # Strip /fibonacci prefix before forwarding to the service
+    konghq.com/strip-path: "true"
+    # Connect timeout, upstream read timeout (ms)
+    konghq.com/connect-timeout: "5000"
+    konghq.com/read-timeout: "30000"
+    konghq.com/write-timeout: "30000"
+spec:
+  ingressClassName: kong
+  rules:
+    - http:
+        paths:
+          - path: /fibonacci
+            pathType: Prefix
+            backend:
+              service:
+                name: svc
+                port:
+                  number: 8080

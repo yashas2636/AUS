@@ -1,0 +1,87 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy
+  labels:
+    app.kubernetes.io/name: app
+    app.kubernetes.io/instance: fibonacci
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 33%
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: app
+      app.kubernetes.io/instance: fibonacci
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: app
+        app.kubernetes.io/instance: fibonacci
+    spec:
+      terminationGracePeriodSeconds: 70
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/instance: fibonacci
+              app.kubernetes.io/name: app
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: app
+                    app.kubernetes.io/instance: fibonacci
+                topologyKey: kubernetes.io/hostname
+      serviceAccountName: fibonacci-sa
+      securityContext:
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: app
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          image: registry.gitlab.com/connective-au/devops/application-images/app:main-latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+            requests:
+              cpu: 200m
+              memory: 512Mi
+          env:
+            - name: TZ
+              value: Australia/Melbourne
+          volumeMounts:
+            - name: newrelic-config
+              mountPath: /newrelic/newrelic.yml
+              subPath: newrelic.yml
+              readOnly: true
+      volumes:
+        - name: newrelic-config
+          configMap:
+            name: newrelic-config

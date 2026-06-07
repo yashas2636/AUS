@@ -1,0 +1,25 @@
+# New Relic Java agent configuration — mounted as a ConfigMap volume at /newrelic/newrelic.yml.
+# The agent is activated via -javaagent:/opt/newrelic/newrelic.jar in JDK_JAVA_OPTIONS (config.env).
+# License key and app name come from the fibonacci-secret ExternalSecret at runtime.
+common:
+  distributed_tracing:
+    enabled: false
+
+  span_events:
+    enabled: false
+
+  browser_monitoring:
+    auto_instrument: false
+
+  error_collector:
+    enabled: true
+    ignore_classes:
+      - "java.io.EOFException"
+      - "org.apache.catalina.connector.ClientAbortException"
+    ignore_status_codes: 404, 429
+    expected_status_codes: 400, 401, 403
+
+  application_logging:
+    forwarding:
+      labels:
+        enabled: true

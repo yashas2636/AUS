@@ -1,0 +1,57 @@
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namePrefix: fibonacci-service-
+
+labels:
+  - pairs:
+      team: engineer
+      app.kubernetes.io/name: fibonacci-service
+      app.kubernetes.io/instance: fibonacci
+    includeSelectors: true
+    includeTemplates: true
+  - pairs:
+      tier: backend
+    includeSelectors: false
+    includeTemplates: true
+
+resources:
+  - ../components
+  - ingress.yaml
+  - external-secret.yaml
+
+patches:
+  # Liveness / readiness / startup probes
+  - path: probes.yaml
+    target:
+      kind: Deployment
+      name: deploy
+
+  # Inject secret (NR license key) + ConfigMap (app config) as envFrom
+  - target:
+      kind: Deployment
+      name: deploy
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: fibonacci-secret
+          - configMapRef:
+              name: fibonacci-service-config
+
+  # Pin image to service-specific name (overridden to exact tag in each overlay)
+  - path: image.yaml
+    target:
+      kind: Deployment
+      name: deploy
+
+  # Rename the container from the generic "app" to the service name
+  - target:
+      kind: Deployment
+      name: deploy
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/name
+        value: fibonacci-service

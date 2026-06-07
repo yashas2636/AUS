@@ -1,0 +1,74 @@
+---
+# ArgoCD ApplicationSet for fibonacci-service.
+#
+# Clusters:
+#   test        → test environment (shared dev/test cluster)
+#   prod-mel    → Melbourne data centre (melbourne overlay)
+#   prod-syd    → Sydney data centre   (sydney overlay)
+#
+# Local development does NOT go through ArgoCD.
+# Use: kubectl apply -k gitops/applications/fibonacci/overlays/local
+#
+# Registered in: connective-au/devops/gitops  argocd/appsets/applications/
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: fibonacci-service
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - env: test            # test cluster — dev/test environment
+                  appProject: connective-test
+                  overlayPath: test
+                - env: prod-mel        # Melbourne data centre cluster
+                  appProject: connective-prod
+                  overlayPath: melbourne
+                - env: prod-syd        # Sydney data centre cluster
+                  appProject: connective-prod
+                  overlayPath: sydney
+          - clusters:
+              selector:
+                matchExpressions:
+                  - key: env
+                    operator: In
+                    values: ["{{ .env }}"]
+  template:
+    metadata:
+      name: fibonacci-service-{{ .env }}
+      labels:
+        name: fibonacci-service
+        environment: "{{ .env }}"
+        namespace: fibonacci
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: "{{ .appProject }}"
+      source:
+        repoURL: https://github.com/your-org/fibonacci-service.git
+        targetRevision: main
+        path: gitops/applications/fibonacci/overlays/{{ .overlayPath }}
+      destination:
+        name: "{{ .name }}"
+        namespace: fibonacci
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - ApplyOutOfSyncOnly=true
+          - CreateNamespace=true
+  # Teams alerts on prod clusters only
+  templatePatch: |
+    {{- if or (eq .env "prod-mel") (eq .env "prod-syd") }}
+    metadata:
+      annotations:
+        notifications.argoproj.io/subscribe.on-deployed.teams-sre: ""
+        notifications.argoproj.io/subscribe.on-health-degraded.teams-sre: ""
+        notifications.argoproj.io/subscribe.on-sync-failed.teams-sre: ""
+    {{- end }}
