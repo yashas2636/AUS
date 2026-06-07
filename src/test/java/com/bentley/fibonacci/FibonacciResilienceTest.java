@@ -84,10 +84,13 @@ class FibonacciResilienceTest {
                .andExpect(jsonPath("$.result").value(5));
     }
 
+    // Java's Character.digit('٧', 10) = 7, so parseInt accepts Arabic-Indic digits
     @Test
-    void unicodeDigit_returns400() throws Exception {
+    void unicodeDigit_parsedAs7_returns200() throws Exception {
         mockMvc.perform(get("/api/v1/fibonacci").param("n", "٧"))
-               .andExpect(status().isBadRequest());
+               .andExpect(status().isOk())
+               .andExpect(jsonPath("$.n").value(7))
+               .andExpect(jsonPath("$.result").value(13));
     }
 
     @Test
