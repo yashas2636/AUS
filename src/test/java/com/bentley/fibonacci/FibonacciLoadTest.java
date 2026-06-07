@@ -1,4 +1,4 @@
-﻿package com.bentley.fibonacci;
+package com.bentley.fibonacci;
 
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

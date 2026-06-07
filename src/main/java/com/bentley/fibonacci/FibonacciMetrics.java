@@ -1,4 +1,4 @@
-﻿package com.bentley.fibonacci;
+package com.bentley.fibonacci;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;

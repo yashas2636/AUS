@@ -1,4 +1,4 @@
-﻿package com.bentley.fibonacci;
+package com.bentley.fibonacci;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import org.springframework.cache.CacheManager;

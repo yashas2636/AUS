@@ -1,4 +1,4 @@
-﻿package com.bentley.fibonacci;
+package com.bentley.fibonacci;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,4 +1,4 @@
-﻿package com.bentley.fibonacci;
+package com.bentley.fibonacci;
 
 import io.micrometer.core.instrument.Timer;
 import jakarta.validation.constraints.Max;

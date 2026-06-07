@@ -1,4 +1,4 @@
-﻿package com.bentley.fibonacci;
+package com.bentley.fibonacci;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
