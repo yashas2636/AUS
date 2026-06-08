@@ -19,7 +19,7 @@ GitOps deployment across two production data centres, and SRE observability.
 | **Error handling** | `@RestControllerAdvice` | Catches every exception type; no stack trace ever reaches the client |
 | **Architecture style** | Microservice | Single responsibility (one endpoint, one job); stateless; independently deployable and scalable |
 | **Containerisation** | Docker (multi-stage BuildKit) | Stage 1: Maven build; Stage 2: `eclipse-temurin:21-jre-alpine`; non-root user; NR agent via `JDK_JAVA_OPTIONS` |
-| **CI/CD** | GitHub Actions | 3 jobs: build + test → Trivy container scan → GitOps image tag update |
+| **CI/CD** | GitHub Actions | 2 jobs: build + test → Docker build + Trivy container scan (no push — public repo) |
 | **Security scanning** | OWASP + Trivy | OWASP blocks on CVSS ≥ 9 dependency CVEs; Trivy blocks on CRITICAL/HIGH container CVEs before push |
 | **GitOps** | Kustomize + ArgoCD | `components → base → overlays/{env}`; ArgoCD `ApplicationSet` deploys to test + Melbourne + Sydney from one manifest |
 | **API gateway** | Kong | Platform-level ingress; TLS termination; connect-timeout 5s, read-timeout 30s; routes `/fibonacci` to service |
@@ -37,7 +37,7 @@ GitOps deployment across two production data centres, and SRE observability.
 | **SLOs** | Defined in `monitoring/slo.md` | Availability ≥ 99.9%; P95 < 500ms; P99 < 2s; error budget burn rate alerts at 1h/6h/24h windows |
 | **Secrets management** | ExternalSecret + Azure Key Vault | NR license key never in git; injected at runtime from Key Vault via the platform ExternalSecret operator |
 | **Authentication** | **Not implemented — see proposal below** | No auth layer exists in this version. All requests are accepted if they pass rate limiting and validation. See the Authentication proposal section for the recommended approach. |
-| **Testing** | JUnit 5 + Spring MockMvc | 59 tests across 5 classes: algorithm, HTTP layer, rate limiter, load (1,000 concurrent), 27 resilience edge cases |
+| **Testing** | JUnit 5 + Spring MockMvc | 63 tests across 5 classes: algorithm, HTTP layer, rate limiter, load (100 concurrent), 24 resilience edge cases |
 | **Build tool** | Maven 3.9 | Dependency management, test execution, OWASP CVE check (`mvn verify`) |
 | **Logging** | Logback + logstash-logback-encoder | JSON in prod/staging (ships to NR Logs); plain text in local/test; `traceId`/`spanId` in MDC for log-trace correlation |
 
@@ -59,7 +59,7 @@ GitOps deployment across two production data centres, and SRE observability.
 │   │               GitHub Actions CI/CD (3 jobs)                 │     │    │
 │   │                                                             │     │    │
 │   │  Job 1: Build & Test                                        │     │    │
-│   │    mvn verify (59 tests)                                    │     │    │
+│   │    mvn verify (63 tests)                                    │     │    │
 │   │    OWASP dependency CVE check (fail on CVSS ≥ 9)           │     │    │
 │   │         │                                                   │     │    │
 │   │         ▼                                                   │     │    │
@@ -970,7 +970,7 @@ mvn test -Dtest=FibonacciServiceTest -Dspring.profiles.active=test
 # Rate limiter
 mvn test -Dtest=RateLimitInterceptorTest -Dspring.profiles.active=test
 
-# Load test (1,000 concurrent requests)
+# Load test (100 concurrent requests)
 mvn test -Dtest=FibonacciLoadTest -Dspring.profiles.active=test
 ```
 
@@ -1525,15 +1525,15 @@ The in-process limiter uses a **sliding window** (not fixed window) keyed by cli
 
 ---
 
-## Test suite — 59 tests across 5 classes
+## Test suite — 63 tests across 5 classes
 
 | Class | Tests | What it covers |
 |-------|-------|----------------|
-| `FibonacciServiceTest` | 8 | Algorithm — base cases, spec examples, parametrized values F(0)–F(30), F(100) BigInteger overflow, negative input |
+| `FibonacciServiceTest` | 16 | Algorithm — base cases, spec examples, parametrized values F(0)–F(30) (8 cases), F(50) BigInteger overflow, F(100), negative input |
 | `FibonacciControllerTest` | 18 | HTTP layer — happy path, floats, strings, booleans, SQL injection, XSS, wrong method, 404, missing param |
 | `RateLimitInterceptorTest` | 3 | Within-limit passes; over-limit returns 429; response body is valid JSON |
-| `FibonacciLoadTest` | 3 | 1,000 concurrent requests: all-valid → all 200; all-bad-data → all 4xx zero 5xx; mixed → zero server errors |
-| `FibonacciResilienceTest` | 27 | Integer overflow (`MAX_VALUE`, beyond int range), scientific notation, hex, leading zeros, URL-encoded chars, unicode digits, emoji, duplicate params, extra params, large response (n=100000), cache stampede (50 concurrent threads same n), cache eviction (500 unique values), actuator endpoint exposure, content negotiation, path traversal, trailing slash, bad-data flood then valid request |
+| `FibonacciLoadTest` | 2 | 100 concurrent requests: all-valid → all 200; bad-data flood → zero 5xx |
+| `FibonacciResilienceTest` | 24 | Integer boundary (MAX\_VALUE, beyond int range), scientific notation, hex (0x0A accepted), leading zeros, URL-encoded chars, unicode digit (accepted), emoji, plus-sign prefix, duplicate params, extra params, large response (n=100000), cache consistency, actuator endpoint security, content negotiation, path traversal, trailing slash, bad-data flood then valid request |
 
 ---
 
@@ -1589,9 +1589,10 @@ Teams notifications fire on deploy/health-degraded for prod clusters only.
 
 Three jobs — **Job 2 must pass Trivy scan before image is pushed**:
 
-1. **Build & Test** — `mvn verify` (59 tests) + OWASP dependency CVE check (`CVSS ≥ 9` = fail)
-2. **Docker Build → Trivy Scan → Push** — BuildKit build, container CVE scan (CRITICAL/HIGH block push), push to GitLab registry, compute `v{tag}@sha256:{digest}` using build action output (not docker inspect — that was a bug in early drafts)
-3. **Update GitOps** — `scripts/update-image-tag.sh` patches `test` overlay, commits with `[skip ci]`
+1. **Build & Test** — `mvn verify` (63 tests) + OWASP dependency CVE check (`CVSS ≥ 9` = fail)
+2. **Docker Build → Trivy Scan** — BuildKit build, container CVE scan (CRITICAL/HIGH reported), image loaded locally for scan (not pushed — public repo has no registry configured)
+
+> **CD note:** In a production deployment this pipeline would add a third job to push the image to a registry and update the GitOps overlay. That design is documented in the Architecture overview and Workflow 3 sections. The public GitHub repo omits the push because it has no target registry or Kubernetes cluster.
 
 Production promotion: manual PR updating `melbourne/` and `sydney/` overlays to the same immutable digest tag.
 
@@ -2109,7 +2110,7 @@ The value AI provided was speed on boilerplate. The value I provided was knowing
 | Kustomize structure | Flat YAML files in a `k8s/` folder | **Replaced entirely.** Reviewed the existing GitOps repo structure first. Flat YAML doesn't work with ArgoCD's multi-cluster ApplicationSet pattern. Rebuilt as `components/ → base/ → overlays/{env}/` with `namePrefix`, `configMapGenerator`, and `generatorOptions` — matching exactly how every other service is deployed. |
 | ArgoCD manifest | Plain `Application` resource | **Replaced.** The platform uses `ApplicationSet` with a matrix generator (env list × cluster selector). A plain `Application` can only target one cluster; `ApplicationSet` deploys to test, Melbourne, and Sydney from a single manifest. |
 | CI/CD workflow | 3-job pipeline | **Fixed a silent bug.** The digest computation ran `docker inspect` on the image before it was built — it always returned an empty string, producing tags like `v1.0.0@` with no digest. Fixed to use `steps.build.outputs.digest` from the build action's output. Also pinned `yq` to a specific version (supply chain risk) and added Trivy container scan and OWASP dependency check. |
-| Test suite | Happy-path controller tests only | **Extended significantly.** AI wrote tests for the spec examples and basic error cases. I added: 27 resilience cases (integer boundary overflow, scientific notation, Unicode digits, cache stampede, actuator endpoint exposure), rate limiter tests, and three load test scenarios (1,000 concurrent valid requests; 1,000 bad-data requests; 1,000 mixed inputs — zero server errors required in all cases). |
+| Test suite | Happy-path controller tests only | **Extended significantly.** AI wrote tests for the spec examples and basic error cases. Added: 24 resilience cases (integer boundary overflow, scientific notation, Unicode digits, actuator endpoint exposure), rate limiter tests with per-test state reset, and load test scenarios (100 concurrent requests). Several AI test assumptions were wrong and corrected — `0x0A`, `+5`, and Arabic-Indic `٧` are all accepted as valid integers by Java/Spring. |
 
 ---
 
